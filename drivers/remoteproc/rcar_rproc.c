@@ -389,6 +389,11 @@ static int rcar_rproc_probe(struct platform_device *pdev)
 	}
 
 	pm_runtime_enable(priv->dev);
+	ret = pm_runtime_get_sync(priv->dev);
+	if (ret) {
+		dev_err(&rproc->dev, "failed to power up\n");
+		goto free_rproc;
+	}
 
 	dev_set_drvdata(dev, rproc);
 
@@ -399,11 +404,8 @@ static int rcar_rproc_probe(struct platform_device *pdev)
 		if (ret)
 			goto free_rproc;
 	} else {
-		ret = pm_runtime_get_sync(priv->dev);
-		if (ret) {
-			dev_err(&rproc->dev, "failed to power up\n");
-			goto free_rproc;
-		}
+		/* Manually start the rproc */
+		rproc->auto_boot = false;
 	}
 
 	priv->workqueue = create_workqueue(dev_name(dev));
