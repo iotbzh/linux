@@ -12,6 +12,8 @@
 
 #define WDTRSTCR_RESET		0xA55A0002
 #define WDTRSTCR		0x0054
+#define CR7BAR			0x0070
+#define CR7BAREN		BIT(4)
 
 static int rcar_rst_enable_wdt_reset(void __iomem *base)
 {
@@ -19,25 +21,29 @@ static int rcar_rst_enable_wdt_reset(void __iomem *base)
 	return 0;
 }
 
+static int rcar_rst_set_gen3_rproc_boot_addr(u32 boot_addr);
+
 struct rst_config {
 	unsigned int modemr;		/* Mode Monitoring Register Offset */
 	int (*configure)(void __iomem *base);	/* Platform specific config */
+	int (*set_rproc_boot_addr)(u32 boot_addr);
 };
 
-static const struct rst_config rcar_rst_gen1 __initconst = {
+static const struct rst_config rcar_rst_gen1 = {
 	.modemr = 0x20,
 };
 
-static const struct rst_config rcar_rst_gen2 __initconst = {
+static const struct rst_config rcar_rst_gen2 = {
 	.modemr = 0x60,
 	.configure = rcar_rst_enable_wdt_reset,
 };
 
-static const struct rst_config rcar_rst_gen3 __initconst = {
+static const struct rst_config rcar_rst_gen3 = {
 	.modemr = 0x60,
+	.set_rproc_boot_addr = rcar_rst_set_gen3_rproc_boot_addr,
 };
 
-static const struct rst_config rcar_rst_r8a779a0 __initconst = {
+static const struct rst_config rcar_rst_r8a779a0 = {
 	.modemr = 0x00,		/* MODEMR0 and it has CPG related bits */
 };
 
@@ -76,13 +82,13 @@ static const struct of_device_id rcar_rst_matches[] __initconst = {
 	{ /* sentinel */ }
 };
 
-static void __iomem *rcar_rst_base __initdata;
+static void __iomem *rcar_rst_base;
 static u32 saved_mode __initdata;
+static const struct rst_config *cfg;
 
 static int __init rcar_rst_init(void)
 {
 	const struct of_device_id *match;
-	const struct rst_config *cfg;
 	struct device_node *np;
 	void __iomem *base;
 	int error = 0;
@@ -130,3 +136,33 @@ int __init rcar_rst_read_mode_pins(u32 *mode)
 	*mode = saved_mode;
 	return 0;
 }
+
+/*
+ * Most of R-Car Gen3 SoCs have an ARM Realtime Core.
+ * Firmware boot address can be set before starting,
+ * the realtime core thanks to CR7BAR register.
+ * Boot address is on 32bit, and should be aligned on
+ * 4k boundary.
+ */
+int rcar_rst_set_gen3_rproc_boot_addr(u32 boot_addr)
+{
+	if (boot_addr % SZ_4K) {
+		pr_warn("Invalid boot address for CR7 processor,"
+		       "should be aligned on 4k got %x\n", boot_addr);
+		return -EINVAL;
+	}
+
+	iowrite32(boot_addr, rcar_rst_base + CR7BAR);
+	iowrite32(boot_addr | CR7BAREN, rcar_rst_base + CR7BAR);
+
+	return 0;
+}
+
+int rcar_rst_set_rproc_boot_addr(u32 boot_addr)
+{
+	if (!rcar_rst_base || !cfg->set_rproc_boot_addr)
+		return -EIO;
+
+	return cfg->set_rproc_boot_addr(boot_addr);
+}
+EXPORT_SYMBOL(rcar_rst_set_rproc_boot_addr);
