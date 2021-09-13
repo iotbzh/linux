@@ -366,6 +366,13 @@
 		#size-cells = <2>;
 		ranges;
 
+		cr7_rproc: cr7 {
+			compatible = "renesas,rcar-cr7";
+			power-domains = <&sysc R8A7795_PD_CR7>;
+			resets = <&cpg 222>;
+			status = "disabled";
+		};
+
 		rwdt: watchdog@e6020000 {
 			compatible = "renesas,r8a7795-wdt", "renesas,rcar-gen3-wdt";
 			reg = <0 0xe6020000 0 0x0c>;
